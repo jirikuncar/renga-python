@@ -77,10 +77,6 @@ class Graph(object):
         """Return a relative path based on the client configuration."""
         return os.path.relpath(str(self.client.path / path))
 
-    def _is_cwl(self, path):
-        """Check if the path is a valid CWL file."""
-        return path.startswith(self.cwl_prefix) and path.endswith('.cwl')
-
     def add_node(self, commit, path, **kwargs):
         """Add a node representing a file."""
         key = str(commit), str(path)
@@ -165,7 +161,7 @@ class Graph(object):
                         self.G.add_edge(input_key, tool_key, id=input_id)
 
             # Find ALL siblings that MUST be generated in the same commit.
-            for output_id, output_path in step_tool.iter_output_files():
+            for output_id, output_path in step_tool.iter_output_files(basedir):
                 node_key = self.add_node(commit, output_path)
                 self.G.add_edge(tool_key, node_key, id=output_id)
 
@@ -204,6 +200,7 @@ class Graph(object):
         """Add a tool and its dependencies to the graph."""
         data = (commit.tree / path).data_stream.read()
         cwl = yaml.load(data)
+        basedir = os.path.dirname(path)
 
         tool = CommandLineTool.from_cwl(cwl)
         if isinstance(tool, Workflow) and expand_workflow:
@@ -214,9 +211,7 @@ class Graph(object):
         if is_step:
             return tool_key
 
-        for input_id, input_path in tool.iter_input_files(
-            os.path.dirname(path)
-        ):
+        for input_id, input_path in tool.iter_input_files(basedir):
             input_key = self.add_file(
                 input_path, revision='{0}^'.format(commit)
             )
@@ -225,7 +220,7 @@ class Graph(object):
                 self.G.add_edge(input_key, tool_key, id=input_id)
 
         # Find ALL siblings that MUST be generated in the same commit.
-        for output_id, path in tool.iter_output_files():
+        for output_id, path in tool.iter_output_files(basedir):
             node_key = self.add_node(commit, path)
             self.G.add_edge(tool_key, node_key, id=output_id)
 
