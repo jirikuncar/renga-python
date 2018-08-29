@@ -45,11 +45,12 @@ class Dependency(object):
     path = attr.ib(default=None)
     id = attr.ib(default=None)
 
-    def need_update(self, revision=None, index=None):
-        """Check if the commit is out-dated."""
+    def need_update(self, revision='HEAD'):
+        """Check if the commit is out-dated and return the latest change."""
         latest_changes = self.client.latest_changes(revision=revision)
-        latest = latest_changes[self.path]
-        return latest != self.commit.hexsha
+        latest = latest_changes.get(self.path)
+        if latest != self.commit.hexsha:
+            return latest
 
 
 @attr.s
@@ -63,6 +64,32 @@ class Action(object):
     process_path = attr.ib(default=None)
     inputs = attr.ib(default=attr.Factory(dict))
     outputs = attr.ib(default=attr.Factory(dict))
+
+    def iter_nodes(self, expand_workflow=True):
+        """Yield all graph nodes."""
+        if self.process_path:
+            # TODO submodule
+            yield (str(self.commit), self.process_path), {'tool': self.process}
+
+        for path, dependency in self.inputs.items():
+            yield (str(dependency.commit), path), {}
+
+        for path, _ in self.outputs.items():
+            yield (str(self.commit), path), {}
+
+    def iter_edges(self, expand_workflow=True):
+        """Yield all graph edges."""
+        if self.process:
+            tool_key = (str(self.commit), self.process_path)
+            for path, dependency in self.inputs.items():
+                input_key = (str(dependency.commit), path)
+                #: Edge from an input to the tool.
+                yield input_key, tool_key, {'id': dependency.id}
+
+            for path, output_id in self.outputs.items():
+                node_key = (str(self.commit), path)
+                #: Edge from the tool to an output.
+                yield tool_key, node_key, {'id': output_id}
 
     @classmethod
     def from_git_commit(cls, commit, client):
@@ -193,13 +220,23 @@ class Action(object):
             for path, c in index.items() if _safe_path(path)
         ]
 
-        outdated = [(path, dependency) for action in actions
-                    for path, dependency in action.outdated().items()]
+        outdated = {
+            key: value
+            for action in actions
+            for key, value in action.outdated(revision=revision).items()
+        }
+
+        return {
+            'outdated': outdated,
+        }
 
     def outdated(self, revision='HEAD'):
         """Check if the commit is out-dated."""
-        return {
-            path: dependency
-            for path, dependency in self.inputs.items()
-            if dependency.need_update(revision=revision)
-        }
+        result = {}
+
+        for path, dependency in self.inputs.items():
+            latest = dependency.need_update(revision=revision)
+            if latest:
+                result[(str(dependency.commit), depedency.path)] = latest
+
+        return result

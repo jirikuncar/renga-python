@@ -35,7 +35,7 @@ from renku.models.cwl.workflow import Workflow
 def _safe_path(filepath, can_be_cwl=False):
     """Check if the path should be used in output."""
     # Should not be in ignore paths.
-    if filepath in {'.gitignore', '.gitattributes'}:
+    if filepath in {'.gitignore', '.gitattributes', '.gitmodules'}:
         return False
 
     # Ignore everything in .renku ...
@@ -374,6 +374,7 @@ class Graph(object):
             'deleted': {},
         }
 
+
         index = self.client.get_index(revision=revision)
         current_files = {
             self.add_file(filepath, revision=revision)
@@ -382,6 +383,47 @@ class Graph(object):
         }
 
         self.update_latest(revision=revision)
+
+        # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+        # from renku.models.commit import Action
+        # status.update(**Action.status(client=self.client, revision=revision))
+        # return status
+
+        latest_changes = self.client.latest_changes(revision=revision)
+        current_files = [(commit, path)
+                         for path, commit in latest_changes.items()
+                         if _safe_path(path, can_be_cwl=can_be_cwl)]
+
+        from renku.models.commit import Action
+
+        actions = Action.build_graph(client=self.client, revision=revision)
+        for action in actions.values():
+            for key, data in action.iter_nodes():
+                self.G.add_node(key, **data)
+            for source, target, data in action.iter_edges():
+                self.G.add_edge(source, target, **data)
+
+        index = self.client.get_index(revision=revision)
+        ages = {
+            str(commit): index
+            for index, commit in
+            enumerate(self.client.git.iter_commits(revision))
+        }
+
+        for (commit, path), data in self.G.nodes.data():
+            current_age = ages.get(commit)
+            if current_age is None:
+                # skip submodule
+                continue
+
+            latest = latest_changes.get(path)
+            latest_age = ages.get(latest, -1)
+            # print(commit, current_age, path, latest, latest_age)
+
+            if current_age > latest_age:
+                print('Outdated', commit, path, '->', latest)
+                self.G.nodes[(commit, path)]['latest'] = latest
+        # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
         # Prepare status info for each file.
         self._need_update()
@@ -393,12 +435,13 @@ class Graph(object):
                  filepath), need_update in self.G.nodes.data('_need_update')
             if not need_update
         }
+        print(up_to_date)
 
         for commit, filepath in current_files:
             if filepath in up_to_date:  # trick the workflow step
                 # FIXME use the latest commit
                 status['up-to-date'][filepath] = up_to_date[filepath]
-            else:
+            elif (commit, filepath) in self.G.nodes:
                 need_update = self.G.nodes[(commit, filepath)]['_need_update']
                 status['outdated'][filepath] = [need_update]
 

@@ -101,7 +101,7 @@ class RepositoryApiMixin(object):
             self.git = None
         # TODO except
 
-        #: Local caches
+        #: Cached values:
         self._latest_changes = {}
 
     @property
