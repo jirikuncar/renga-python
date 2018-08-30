@@ -189,13 +189,14 @@ class Action(object):
         )
 
     @classmethod
-    def build_graph(cls, client, revision='HEAD'):
+    def build_graph(cls, client, revision='HEAD', lookup=None):
         """Build a graph for the whole repository."""
         graph = {}
-        lookup = deque(
-            Dependency(client=client, commit=commit)
-            for commit in client.git.iter_commits(rev=revision)
-        )
+        if lookup is None:
+            lookup = deque(
+                Dependency(client=client, commit=commit)
+                for commit in client.git.iter_commits(rev=revision)
+            )
 
         while lookup:
             dependency = lookup.popleft()

@@ -19,7 +19,6 @@
 
 import os
 from collections import defaultdict
-from functools import lru_cache
 
 import attr
 import yaml
@@ -49,7 +48,7 @@ def _safe_path(filepath, can_be_cwl=False):
     return True
 
 
-@attr.s(cmp=False)
+@attr.s
 class Graph(object):
     """Represent the provenance graph."""
 
@@ -85,7 +84,6 @@ class Graph(object):
         self.G.node[key].update(**kwargs)
         return key
 
-    @lru_cache(maxsize=1024)
     def find_cwl(self, commit):
         """Return a CWL."""
         cwl = None
@@ -390,40 +388,41 @@ class Graph(object):
         # status.update(**Action.status(client=self.client, revision=revision))
         # return status
 
-        latest_changes = self.client.latest_changes(revision=revision)
-        current_files = [(commit, path)
-                         for path, commit in latest_changes.items()
-                         if _safe_path(path, can_be_cwl=can_be_cwl)]
+        if False:
+            latest_changes = self.client.latest_changes(revision=revision)
+            current_files = [(commit, path)
+                             for path, commit in latest_changes.items()
+                             if _safe_path(path, can_be_cwl=can_be_cwl)]
 
-        from renku.models.commit import Action
+            from renku.models.commit import Action
 
-        actions = Action.build_graph(client=self.client, revision=revision)
-        for action in actions.values():
-            for key, data in action.iter_nodes():
-                self.G.add_node(key, **data)
-            for source, target, data in action.iter_edges():
-                self.G.add_edge(source, target, **data)
+            actions = Action.build_graph(client=self.client, revision=revision)
+            for action in actions.values():
+                for key, data in action.iter_nodes():
+                    self.G.add_node(key, **data)
+                for source, target, data in action.iter_edges():
+                    self.G.add_edge(source, target, **data)
 
-        index = self.client.get_index(revision=revision)
-        ages = {
-            str(commit): index
-            for index, commit in
-            enumerate(self.client.git.iter_commits(revision))
-        }
+            index = self.client.get_index(revision=revision)
+            ages = {
+                str(commit): index
+                for index, commit in
+                enumerate(self.client.git.iter_commits(revision))
+            }
 
-        for (commit, path), data in self.G.nodes.data():
-            current_age = ages.get(commit)
-            if current_age is None:
-                # skip submodule
-                continue
+            for (commit, path), data in self.G.nodes.data():
+                current_age = ages.get(commit)
+                if current_age is None:
+                    # skip submodule
+                    continue
 
-            latest = latest_changes.get(path)
-            latest_age = ages.get(latest, -1)
-            # print(commit, current_age, path, latest, latest_age)
+                latest = latest_changes.get(path)
+                latest_age = ages.get(latest, -1)
+                # print(commit, current_age, path, latest, latest_age)
 
-            if current_age > latest_age:
-                print('Outdated', commit, path, '->', latest)
-                self.G.nodes[(commit, path)]['latest'] = latest
+                if current_age > latest_age:
+                    print('Outdated', commit, path, '->', latest)
+                    self.G.nodes[(commit, path)]['latest'] = latest
         # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
         # Prepare status info for each file.
@@ -436,7 +435,6 @@ class Graph(object):
                  filepath), need_update in self.G.nodes.data('_need_update')
             if not need_update
         }
-        print(up_to_date)
 
         for commit, filepath in current_files:
             if filepath in up_to_date:  # trick the workflow step

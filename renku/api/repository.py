@@ -103,6 +103,7 @@ class RepositoryApiMixin(object):
 
         #: Cached values:
         self._latest_changes = {}
+        self._commit_order = {}
 
     @property
     def lock(self):
@@ -141,9 +142,22 @@ class RepositoryApiMixin(object):
         """Check if the path is a valid CWL file."""
         return path.startswith(self.cwl_prefix) and path.endswith('.cwl')
 
-    def find_previous_commit(self, paths, revision='HEAD'):
+    def find_previous_commit(self, path, revision='HEAD'):
         """Return a previous commit for a given path."""
-        file_commits = list(self.git.iter_commits(revision, paths=paths))
+        modifications = self.modifications()
+        history = modifications[path]
+        commit = self.git.rev_parse(revision).hexsha
+        current_age = modifications[None][commit]
+
+        for current_index, (commit, age) in enumerate(history):
+            if age > current_age:
+                return self.git.commit(commit)
+
+        raise KeyError(
+            'Could not find a file {0} in range {1}'.format(path, revision)
+        )
+
+        file_commits = list(self.git.iter_commits(revision, paths=path))
 
         if not file_commits:
             raise KeyError(
@@ -304,7 +318,26 @@ class RepositoryApiMixin(object):
         if cache and commit.hexsha in self._latest_changes:
             return self._latest_changes[commit.hexsha]
 
-        cache_dir = self.cache_path / 'latest_changes'
+        changes = {
+            path: commits[0][0]
+            for path, commits in
+            self.modifications(revision=revision, cache=cache).items()
+            if path is not None
+        }
+
+        if cache:
+            self._latest_changes[commit.hexsha] = changes
+
+        return changes
+
+    def modifications(self, revision='HEAD', cache=True):
+        """Return revision of latest change for every file."""
+        commit = self.git.rev_parse(revision)
+
+        if cache and commit.hexsha in self._latest_changes:
+            return self._latest_changes[commit.hexsha]
+
+        cache_dir = self.cache_path / 'v1' / 'modifications'
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         cache_file = (cache_dir / str(commit)).with_suffix('.yaml')
@@ -319,36 +352,23 @@ class RepositoryApiMixin(object):
                 pass
 
         if changes is None:
-            changes = {}
+            from collections import defaultdict
+
+            changes = defaultdict(list)
+            changes[None] = {}
             index = self.get_index(revision=revision)
-            paths = {path for path, _ in index.entries.keys()}
-            start = new_start = commit
+            for index, step in enumerate(self.git.iter_commits(commit)):
+                hexsha = step.hexsha
 
-            while paths:
-                change = 0
-                delta = 10  # len(paths) // 2
+                changes[None][hexsha] = index
 
-                for step in self.git.iter_commits(start, paths=list(paths)):
-                    #: Move the starting point for next iteration.
-                    new_start = step
-                    #: Calling `iter_commits` is expensive. Continue until
-                    #: there are many changes.
-                    if change > delta:
-                        break
+                for path, stats in step.stats.files.items():
+                    # if stats['lines'] == stats['deletions']:
+                    #: Skip deleted files
+                    #     continue
+                    changes[path].append((hexsha, index))
 
-                    hexsha = step.hexsha
-                    touched_paths = set(step.stats.files.keys())
-                    paths -= touched_paths
-                    change += len(touched_paths)
-                    for path in touched_paths:
-                        changes.setdefault(path, hexsha)
-
-                #: No progress in the loop
-                if new_start == start:
-                    break
-
-                #: Move the starting point
-                start = new_start
+            changes = dict(changes)
 
             if cache:
                 self._latest_changes[commit.hexsha] = changes
