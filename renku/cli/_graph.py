@@ -19,6 +19,7 @@
 
 import os
 from collections import defaultdict
+from functools import lru_cache
 
 import attr
 import yaml
@@ -48,7 +49,7 @@ def _safe_path(filepath, can_be_cwl=False):
     return True
 
 
-@attr.s
+@attr.s(cmp=False)
 class Graph(object):
     """Represent the provenance graph."""
 
@@ -84,6 +85,7 @@ class Graph(object):
         self.G.node[key].update(**kwargs)
         return key
 
+    @lru_cache(maxsize=1024)
     def find_cwl(self, commit):
         """Return a CWL."""
         cwl = None
@@ -373,7 +375,6 @@ class Graph(object):
             'multiple-versions': {},
             'deleted': {},
         }
-
 
         index = self.client.get_index(revision=revision)
         current_files = {
