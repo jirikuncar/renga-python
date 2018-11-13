@@ -515,6 +515,8 @@ class CommandLineToolFactory(object):
             if path is not None
         }
 
+        input_tree = DirectoryTree.from_list(input_candidates)
+
         # TODO group by a common prefix
 
         for position, path in enumerate(paths):
@@ -547,6 +549,12 @@ class CommandLineToolFactory(object):
                 if new_input is None:
                     new_input = input_candidates[glob] = attr.evolve(
                         input, type='string', default=glob
+                    )
+
+                if input_tree.get(glob):
+                    raise errors.InvalidOutputPath(
+                        'The output directory "{0}" is not empty.'.
+                        format(glob)
                     )
 
                 yield (
