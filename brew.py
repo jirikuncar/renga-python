@@ -42,9 +42,9 @@ RESOURCE = """  resource "{package}" do
 DEPENDENCY = '  depends_on "{package}"'
 
 DEPENDENCIES = (
-    'python',
     'git-lfs',
     'libxml2',
+    'python',
 )
 
 FORMULA = """class {formula} < Formula
@@ -53,7 +53,6 @@ FORMULA = """class {formula} < Formula
   desc "{desc}"
   homepage "{homepage}"
   url "{url}"
-  version "{version}"
   sha256 "{sha256}"
   version_scheme 1
   head "{homepage}"
@@ -66,8 +65,11 @@ FORMULA = """class {formula} < Formula
     venv.pip_install resources
     venv.pip_install_and_link buildpath
   end
-end
-"""
+
+  test do
+    system "false"
+  end
+end"""
 
 SUFFIXES = {
     #    'py2.py3-none-any.whl': 10,
@@ -138,11 +140,10 @@ print(
             RESOURCE.format(**package)
             for name, package in dependencies.items() if name != NAME
         ),
-        desc=description['info']['summary'],
+        desc=description['info']['summary'].rstrip('.'),
         formula=description['info']['name'].capitalize(),
         homepage=description['info']['home_page'],
         url=release['url'],
         sha256=release['sha256'],
-        version=version,
     )
 )
