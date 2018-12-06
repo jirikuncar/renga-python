@@ -246,3 +246,13 @@ class GitCore:
         if delete:
             shutil.rmtree(path)
             self.repo.git.worktree('prune')
+
+    def walktree(self, tree, path=None):
+        """Yield all paths in the tree."""
+        path = path or []
+
+        for e in tree:
+            if e.type == 'blob':
+                yield os.path.join(path + [e.name])
+            elif e.type == 'tree':
+                yield from walktree(self.repo[e.id], path + [e.name]))

@@ -178,20 +178,10 @@ class RepositoryApiMixin(GitCore):
 
     def find_previous_commit(self, paths, revision='HEAD', follow=False):
         """Return a previous commit for a given path."""
-        if paths and follow:
-            paths = paths if isinstance(paths, (list, tuple)) else (paths, )
-            hexshas = self.repo.git.log(
-                '--format=%H', '--follow', revision, '--', *paths
-            )
-            commits = (
-                self.repo.revparse_single(hexsha)
-                for hexsha in hexshas.strip().split('\n')
-            )
-        else:
-            commits = (
-                commit
-                for commit in self.repo.iter_commits(revision, paths=paths)
-            )
+        from pygit2 import GIT_SORT_TOPOLOGICAL, GIT_SORT_REVERSE
+        sort = GIT_SORT_TOPOLOGICAL | GIT_SORT_REVERSE
+        for commit in self.repo.walk(revision, sort):
+            tree = self.repo[commit.id]
 
         for commit in commits:
             if len(commit.parents) > 1:
