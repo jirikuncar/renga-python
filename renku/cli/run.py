@@ -160,7 +160,7 @@ from ._git import set_git_isolation
 )
 def run(client, no_output, success_codes, isolation, command_line):
     """Tracking work on a specific problem."""
-    working_dir = client.repo.working_dir
+    working_dir = str(client.path)
     mapped_std = _mapped_std_streams(client.candidate_paths)
     factory = CommandLineToolFactory(
         command_line=command_line,

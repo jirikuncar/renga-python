@@ -228,11 +228,7 @@ class CommandLineToolFactory(object):
             # Keep track of unmodified output files.
             unmodified = set()
             # Possible output paths.
-            candidates = set(repo.untracked_files)
-            candidates |= {
-                item.a_path
-                for item in repo.index.diff(None) if not item.deleted_file
-            }
+            candidates = set(client.candidate_paths)
 
             from renku.cli._graph import _safe_path
             candidates = {path for path in candidates if _safe_path(path)}

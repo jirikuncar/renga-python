@@ -22,7 +22,7 @@ import re
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager
-from subprocess import check_output
+from subprocess import run
 
 import attr
 import filelock
@@ -42,12 +42,8 @@ _RE_GIT_SUBTREE = re.compile(
 
 def default_path():
     """Return default repository path."""
-    from git import InvalidGitRepositoryError
     from renku.cli._git import get_git_home
-    try:
-        return get_git_home()
-    except InvalidGitRepositoryError:
-        return '.'
+    return get_git_home()
 
 
 @attr.s
@@ -104,10 +100,16 @@ class RepositoryApiMixin(GitCore):
 
         # initialize submodules
         if self.repo:
-            check_output([
-                'git', 'submodule', 'update', '--init', '--recursive'
-            ],
-                         cwd=str(self.path))
+            try:
+                recurse_submodule = self.repo.config['fetch.recurseSubmodule']
+            except KeyError:
+                recurse_submodule = None
+                self.repo.config['fetch.recurseSubmodule'] = True
+
+            self.repo.update_submodules(init=True)
+
+            if recurse_submodule is None:
+                del self.repo.config['fetch.recurseSubmodule']
         # TODO except
 
     @property
@@ -182,7 +184,7 @@ class RepositoryApiMixin(GitCore):
                 '--format=%H', '--follow', revision, '--', *paths
             )
             commits = (
-                self.repo.rev_parse(hexsha)
+                self.repo.revparse_single(hexsha)
                 for hexsha in hexshas.strip().split('\n')
             )
         else:
@@ -341,19 +343,19 @@ class RepositoryApiMixin(GitCore):
 
     def init_repository(self, name=None, force=False):
         """Initialize a local Renku repository."""
-        from git import Repo
+        from pygit2 import init_repository
 
         path = self.path.absolute()
         if force:
             self.renku_path.mkdir(parents=True, exist_ok=force)
             if self.repo is None:
-                self.repo = Repo.init(str(path))
+                self.repo = init_repository(str(path))
         else:
             if self.repo is not None:
-                raise FileExistsError(self.repo.git_dir)
+                raise FileExistsError(path)
 
             self.renku_path.mkdir(parents=True, exist_ok=force)
-            self.repo = Repo.init(str(path))
+            self.repo = init_repository(str(path))
 
         self.repo.description = name or path.name
 

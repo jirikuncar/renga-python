@@ -54,8 +54,7 @@ class StorageApiMixin(RepositoryApiMixin):
     @property
     def external_storage_installed(self):
         """Check that Large File Storage is installed."""
-        return HAS_LFS and self.repo.config_reader(
-        ).has_section('filter "lfs"')
+        return HAS_LFS and 'filter.lfs.process' in self.repo.config
 
     def track_paths_in_storage(self, *paths):
         """Track paths in the external storage."""

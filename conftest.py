@@ -53,7 +53,9 @@ def runner(monkeypatch):
     """Create a runner on isolated filesystem."""
     from renku.cli._config import RENKU_HOME
     monkeypatch.setenv('RENKU_CONFIG', RENKU_HOME)
-    return CliRunner()
+    runner_ = CliRunner()
+    with runner_.isolated_filesystem():
+        yield runner_
 
 
 @pytest.fixture()

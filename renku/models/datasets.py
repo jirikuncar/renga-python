@@ -85,13 +85,10 @@ class Author(object):
     @classmethod
     def from_git(cls, git):
         """Create an instance from a Git repo."""
-        git_config = git.config_reader()
         try:
-            name = git_config.get_value('user', 'name', None)
-            email = git_config.get_value('user', 'email', None)
-        except (
-            configparser.NoOptionError, configparser.NoSectionError
-        ):  # pragma: no cover
+            name = git.config['user.name']
+            email = git.config['user.email']
+        except KeyError:  # pragma: no cover
             raise errors.ConfigurationError(
                 'The user name and email are not configured. '
                 'Please use the "git config" command to configure them.\n\n'

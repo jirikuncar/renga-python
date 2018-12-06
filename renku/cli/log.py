@@ -95,15 +95,14 @@ def log(client, revision, format, no_output, paths):
         start, is_range, stop = revision.partition('..')
         if not is_range:
             stop = start
+            start = None
         elif not stop:
             stop = 'HEAD'
 
-        commit = client.repo.rev_parse(stop)
-        paths = (
-            str(client.path / item.a_path)
-            for item in commit.diff(commit.parents or NULL_TREE)
-            # if not item.deleted_file
-        )
+        paths = [
+            str(client.path / item.old_file)
+            for item in client.repo.diff(stop, start).deltas
+        ]
 
     # NOTE shall we warn when "not no_output and not paths"?
     graph.build(paths=paths, revision=revision, can_be_cwl=no_output)

@@ -24,7 +24,7 @@ import sys
 import tempfile
 import uuid
 from contextlib import contextmanager
-from email.utils import formatdate
+from time import time
 
 import attr
 
@@ -66,7 +66,7 @@ def _clean_streams(repo, mapped_streams):
         if not stream:
             continue
 
-        path = os.path.relpath(stream, start=repo.working_dir)
+        path = os.path.relpath(stream, start=repo.workdir)
         if (path, 0) not in repo.index.entries:
             os.remove(stream)
         else:
@@ -84,39 +84,41 @@ class GitCore:
 
     def __attrs_post_init__(self):
         """Initialize computed attributes."""
-        from git import InvalidGitRepositoryError, Repo
+        from pygit2 import GitError, Repository
 
         #: Create an instance of a Git repository for the given path.
         try:
-            self.repo = Repo(str(self.path))
-        except InvalidGitRepositoryError:
+            self.repo = Repository(str(self.path))
+        except GitError:
             self.repo = None
 
     @property
     def modified_paths(self):
         """Return paths of modified files."""
         return [
-            item.b_path for item in self.repo.index.diff(None) if item.b_path
+            item.new_file for item in self.repo.diff().deltas if item.new_file
         ]
 
     @property
     def dirty_paths(self):
         """Get paths of dirty files in the repository."""
-        repo_path = self.repo.working_dir
+        from pygit2 import GIT_STATUS_CURRENT, GIT_STATUS_IGNORED
+        repo_path = str(self.path)
         return {
-            os.path.join(repo_path, p)
-            for p in self.repo.untracked_files + self.modified_paths
+            os.path.join(repo_path, filepath)
+            for filepath, flags in self.repo.status().items()
+            if flags not in {GIT_STATUS_CURRENT, GIT_STATUS_IGNORED}
         }
 
     @property
     def candidate_paths(self):
         """Return all paths in the index and untracked files."""
-        repo_path = self.repo.working_dir
+        from pygit2 import GIT_STATUS_CURRENT, GIT_STATUS_IGNORED
+        repo_path = str(self.path)
         return [
-            os.path.join(repo_path, path) for path in itertools.chain(
-                (x[0] for x in self.repo.index.entries),
-                self.repo.untracked_files,
-            )
+            os.path.join(repo_path, path)
+            for filepath, flags in self.repo.status().items()
+            if flags != GIT_STATUS_IGNORED
         ]
 
     def ensure_clean(self, ignore_std_streams=False):
@@ -136,27 +138,45 @@ class GitCore:
     @contextmanager
     def commit(self, author_date=None):
         """Automatic commit."""
-        from git import Actor
+        from pygit2 import GitError, Signature
         from renku.version import __version__
 
-        author_date = author_date or formatdate(localtime=True)
+        default_signature = self.repo.default_signature
+        author_date = author_date or int(time())
 
         yield
 
-        committer = Actor(
+        author = Signature(
+            default_signature.name,
+            default_signature.email,
+            author_date,
+        )
+        committer = Signature(
             'renku {0}'.format(__version__),
             'renku+{0}@datascience.ch'.format(__version__),
         )
 
-        self.repo.git.add('--all')
+        self.repo.index.add_all()
         argv = [os.path.basename(sys.argv[0])] + sys.argv[1:]
         # Ignore pre-commit hooks since we have already done everything.
-        self.repo.index.commit(
+        tree = self.repo.index.write_tree()
+        try:
+            head = self.repo.head
+            ref = head.name
+            parents = [head.target]
+        except GitError:
+            ref = 'HEAD'
+            parents = []
+
+        self.repo.create_commit(
+            ref,
+            author,
+            committer,
             ' '.join(argv),
-            author_date=author_date,
-            committer=committer,
-            skip_hooks=True,
+            tree,
+            parents,
         )
+        self.repo.index.write()
 
     @contextmanager
     def transaction(

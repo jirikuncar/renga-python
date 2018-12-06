@@ -60,10 +60,9 @@ def githooks():
 def install(client, force):
     """Install Git hooks."""
     import pkg_resources
-    from git.index.fun import hook_path as get_hook_path
 
     for hook in HOOKS:
-        hook_path = Path(get_hook_path(hook, client.repo.git_dir))
+        hook_path = Path(client.repo.path) / 'hooks' / hook
         if hook_path.exists():
             if not force:
                 click.echo(

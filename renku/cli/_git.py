@@ -35,8 +35,14 @@ def get_git_home(path='.'):
     if ctx and GIT_KEY in ctx.meta:
         return ctx.meta[GIT_KEY]
 
-    from git import Repo
-    return Repo(path, search_parent_directories=True).working_dir
+    from pygit2 import discover_repository
+    from renku._compat import Path
+    git = discover_repository(path)
+    if git:
+        git_path = Path(git)
+        assert git_path.name == '.git'
+        return str(git_path.parent)
+    return path
 
 
 def set_git_isolation(value):
@@ -55,8 +61,10 @@ def get_git_isolation():
 def _safe_issue_checkout(repo, issue=None):
     """Safely checkout branch for the issue."""
     branch_name = str(issue) if issue else 'master'
-    if branch_name not in repo.heads:
-        branch = repo.create_head(branch_name)
+    if branch_name not in repo.branches:
+        branch = repo.branches.local.create(
+            branch_name, repo.head.get_object()
+        )
     else:
-        branch = repo.heads[branch_name]
-    branch.checkout()
+        branch = repo.branches[branch_name]
+    repo.checkout(branch)

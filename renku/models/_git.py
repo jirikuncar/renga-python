@@ -159,7 +159,7 @@ class Range:
     stop = attr.ib()
 
     @classmethod
-    def rev_parse(cls, git, revision):
+    def from_revision(cls, git, revision):
         """Parse revision string."""
         start, is_range, stop = revision.partition('..')
         if not is_range:
@@ -168,8 +168,8 @@ class Range:
             stop = 'HEAD'
 
         return cls(
-            start=git.rev_parse(start) if start else None,
-            stop=git.rev_parse(stop),
+            start=git.revparse_single(start) if start else None,
+            stop=git.revparse_single(stop),
         )
 
     def __str__(self):
