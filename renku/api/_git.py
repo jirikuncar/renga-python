@@ -255,4 +255,4 @@ class GitCore:
             if e.type == 'blob':
                 yield os.path.join(path + [e.name])
             elif e.type == 'tree':
-                yield from walktree(self.repo[e.id], path + [e.name]))
+                yield from walktree(self.repo[e.id], path + [e.name])
